@@ -18,8 +18,8 @@ class Sentry:
             self.db = "http://127.0.0.1:8888/"
             self.pf = "http://127.0.0.1:9999/"
         if mode == 3:
-            self.db = "http://172.104.98.170:8888/"
-            self.pf = "http://172.104.98.170:9999/"
+            self.db = "http://ip/:8888/"
+            self.pf = "http://ip/:9999/"
         self.setup_directory()
         self.get_symbol_params()
 
