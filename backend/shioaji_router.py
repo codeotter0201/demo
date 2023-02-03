@@ -26,7 +26,7 @@ class ShioajiRouter:
             self._api_key,
             self._secret_key,
         )
-        time.sleep(7)
+        time.sleep(15)
         self._connected = True
         self._connected_ts = pd.Timestamp.now(tz="Asia/Taipei")
         self.contracts = self._update_contracts()
@@ -93,6 +93,12 @@ class ShioajiRouter:
             )
             contract_current = self.get_current_stkfut_contract(contract_basic.code)
             contract_next = self.get_next_stkfut_contract(contract_basic.code)
+            if contract_basic.delivery_date.replace("/", "-") == str(
+                pd.Timestamp.today().date()
+            ):
+                print("Todat is settlement date transfer contracts to R2")
+                contract_basic = self.get_R2_stkfut_contract(code)
+                contract_current = contract_next
         elif product == "stock":
             contract_basic = self.contracts[code]
             contract_current = self.contracts[code]
@@ -109,7 +115,7 @@ class ShioajiRouter:
         """
         如果傳入的start_date為None，預設只傳回最近一天的資料
         """
-        print(f"Download {contract.code} from server.")
+        print(f"Download {contract.code} from server since {start_date}.")
         f = lambda x: pd.to_datetime(x) if x.name == "ts" else x
         start_date = (
             start_date

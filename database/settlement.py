@@ -6,6 +6,9 @@ from bs4 import BeautifulSoup
 class Settlement:
     def __init__(self) -> None:
         self.file_name = "settlement_dates.pkl"
+        self.tw_future_settlement_dates_url = (
+            "https://www.taifex.com.tw/cht/5/futIndxFSP"
+        )
 
     @staticmethod
     def clean_multichart_data(df: pd.DataFrame) -> pd.DataFrame:
@@ -20,7 +23,7 @@ class Settlement:
         data = dict(
             start_year="2010", start_month="01", end_year="2030", end_month="12"
         )
-        r = requests.post("https://www.taifex.com.tw/cht/5/futIndxFSP", data=data)
+        r = requests.post(self.tw_future_settlement_dates_url, data=data)
         s = BeautifulSoup(r.text, "html.parser")
         df = {}
         for row in s.find_all("tr", {"bgcolor": "#FFFFFF", "class": "12bk"}):
@@ -63,7 +66,7 @@ class Settlement:
                 else:
                     timestamp_str = str(
                         settlement_data.index[-1]
-                    )  # 寫比較複雜是為了避免13:30:00有時會沒有價格導致無法搜尋
+                    )  # 寫比較複雜是為了避免13:30:00有時會拿不到價格與index，導致無法搜尋
                     temp[timestamp_str] = diff_values[timestamp_str]
         st_price = (
             pd.Series(temp).sort_index()[::-1].cumsum()
@@ -79,3 +82,7 @@ class Settlement:
         for col in price_cols:
             data.loc[:, col] += st_price
         return data
+
+
+if __name__ == "__main__":
+    Settlement().gen_settlement_dates()

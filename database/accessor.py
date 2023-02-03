@@ -1,15 +1,13 @@
 from history.data import DataConfig, DataFile
-from shioaji_database import ShioajiDatabase
-from dotenv import load_dotenv
-import sys
+from database import ShioajiDatabase
 from settlement import Settlement
 import pandas as pd
 
 
 class Accessor:
     """
-    檢查 1T、1T_BA ，如果沒有就自動建立
-    更新1T資料
+    檢查 1T、1T_BA ，如果沒有就自動建立這兩個檔案
+    更新 1T 資料
     """
 
     def __init__(self, df: DataFile, api: ShioajiDatabase) -> None:
@@ -57,7 +55,7 @@ class Accessor:
 
     def create_data(self, start_date: str = "2018-01-01") -> None:
         """
-        預設起始日期為'2018-01-01'，強制下載並建立資料
+        強制下載並建立資料，預設起始日期為'2018-01-01'
         """
         data = self.api.get_kbar(self.contracts["contract_basic"], start_date)
         data = self.kbar_duplicated_clean(data)

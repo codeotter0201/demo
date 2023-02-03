@@ -8,6 +8,7 @@ pandas
 numpy
 pandas-ta
 plotly==5.11.0
+nbformat>=4.2.0
 tqdm
 python-dotenv
 vectorbt

@@ -27,6 +27,7 @@ class ShioajiDatabase(ShioajiRouter):
 
         @self.api.on_tick_fop_v1(bind=True)
         def Quote_callback_fop_v1_tick(self, exchange: Exchange, tick: TickFOPv1):
+            # t = pd.Timestamp.now().timestamp()
             channel = tick.code
             data = tick.to_dict(raw=True)
             data = dict(
@@ -38,10 +39,12 @@ class ShioajiDatabase(ShioajiRouter):
                 simtrade=data["simtrade"],
             )
             data = json.dumps(data)
+            # print(pd.Timestamp.now().timestamp() - t)
             self.xadd(channel, {"tick": data}, maxlen=50000)
 
         @self.api.on_tick_stk_v1(bind=True)
         def Quote_callback_stk_v1_tick(self, exchange: Exchange, tick: TickSTKv1):
+            # t = pd.Timestamp.now().timestamp()
             channel = tick.code
             data = tick.to_dict(raw=True)
             data = dict(
@@ -53,6 +56,7 @@ class ShioajiDatabase(ShioajiRouter):
                 simtrade=data["simtrade"],
             )
             data = json.dumps(data)
+            # print(pd.Timestamp.now().timestamp() - t)
             self.xadd(channel, {"tick": data}, maxlen=50000)
 
         @self.api.on_bidask_fop_v1(bind=True)
@@ -73,7 +77,7 @@ class ShioajiDatabase(ShioajiRouter):
         self, channel_key: str, quote_type: str = "tick", timestamp_id: int = None
     ) -> pd.DataFrame:
         """
-        timestamp ID 不含小數點，所以會轉換成整數，單位為毫秒，用當下時間轉換需*100。設定0取得所有資料。
+        timestamp ID 不含小數點，所以會轉換成整數，單位為毫秒，用當下時間轉換需*1000，設定0取得所有資料
         """
         start_timestamp = (
             timestamp_id

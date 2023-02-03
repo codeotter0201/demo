@@ -1,4 +1,4 @@
-from Strategy import IStrategy, Config, OrderMethod, OrderPlan
+from strategy import IStrategy, StrategyConfig, OrderMethod, OrderPlan
 import pandas as pd
 import vectorbt as vbt
 import numpy as np
@@ -7,8 +7,8 @@ bar_pattens = IStrategy.bar_pattens
 
 
 @IStrategy(
-    Config(
-        name="trend_rsi_up_15T_STOP_FALLING_LONG",
+    StrategyConfig(
+        name="LONG_RSI_STOP_FALLING_15T_MXF",
         symbol="MXF",
         product="future",
         freq="15T",
@@ -19,7 +19,7 @@ bar_pattens = IStrategy.bar_pattens
         stop_loss=None,
         take_profit=None,
         sl_trailing=False,
-        test_mode=False,
+        test_mode=True,
         note="運用mafe分析，大停損位置，但因為出場手段不好，所以封存, all_mae_75",
         order_plans=[
             OrderPlan(
@@ -31,7 +31,7 @@ bar_pattens = IStrategy.bar_pattens
                 # sp_exit_order=OrderMethod(order_type='touch', price_type='market', stop_followed_price='rise_max'),
                 # tp_exit_order=OrderMethod(order_type='touch', price_type='market', stop_followed_price='entry_price'),
                 exit_order=OrderMethod(
-                    order_type="touch",
+                    order_type="normal",
                     price_type="market",
                     stop_followed_price="exit_price",
                 ),

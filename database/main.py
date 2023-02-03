@@ -5,7 +5,7 @@ import uvicorn, json
 from pydantic import BaseModel
 import redis
 from history.data import DataConfig, DataFile
-from shioaji_database import ShioajiDatabase
+from database import ShioajiDatabase
 from accessor import Accessor
 
 app = FastAPI()

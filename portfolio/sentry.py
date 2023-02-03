@@ -9,8 +9,10 @@ from history.data import DataConfig, DataFile
 
 class Sentry:
     def __init__(self, mode: int = 3) -> None:
+        self.strategy_methods = logics.get_strategies(test=False)
         self.tradable_data_path = "tradable"
         self.full_data_path = "full"
+        self.linode_ip = os.getenv("LINODE_IP")
         if mode == 1:  # production
             self.db = "http://database:8888/"
             self.pf = "http://portfolio:9999/"
@@ -18,9 +20,14 @@ class Sentry:
             self.db = "http://127.0.0.1:8888/"
             self.pf = "http://127.0.0.1:9999/"
         if mode == 3:
-            self.db = "http://ip/:8888/"
-            self.pf = "http://ip/:9999/"
+            self.db = f"http://{self.linode_ip}:8888/"
+            self.pf = f"http://{self.linode_ip}:9999/"
         self.setup_directory()
+        self.get_symbol_params()
+
+    def reload_strategies(self) -> None:
+        is_test_mode = True if os.getenv('IS_DRYRUN', 'Yes') == 'Yes' else False
+        self.strategy_methods = logics.get_strategies(test=is_test_mode)
         self.get_symbol_params()
 
     def setup_directory(self):
@@ -39,19 +46,6 @@ class Sentry:
             return "TXF"
         return symbol
 
-    @staticmethod
-    def get_strategies_name_list() -> list:
-        temp = dict(
-            test=[],
-            online=[],
-        )
-        for k, sn in logics.strategies.items():
-            if sn.config.test_mode:
-                temp["test"].append(k)
-            else:
-                temp["online"].append(k)
-        return temp
-
     def get_symbol_params(self, lookback_days: int = 90) -> None:
         """
         預設MXF的策略，索取報價的時候，自動替換為TXF，小心使用
@@ -59,7 +53,7 @@ class Sentry:
         """
         data_config_list = []
         subscribtion_list = []
-        for sn, v in logics.strategies.items():
+        for sn, v in self.strategy_methods.items():
             config = dict(v.config)
             config["symbol"] = self.symbol_transfer(config["symbol"])
             if (
@@ -145,6 +139,11 @@ class Sentry:
         for param in self.data_config_list:
             requests.delete(url, params=param)
 
+    def clean_backadjust_data(self) -> None:
+        url = self.db + "backadjust"
+        requests.put(url)
+        requests.delete(url)
+
     def update_data_all(self) -> None:
         url = self.db + "data"
         for param in self.data_config_list:
@@ -154,14 +153,10 @@ class Sentry:
                 & ("R1" not in param["code"])
             ):
                 param["code"] += "R1"
-            # if param['product'] != '1T':
-            #     df = param.copy()
-            #     df['frequency'] = '1T'
-            #     requests.put(url, params=df)
             requests.put(url, params=param)
 
     def get_last_signal(self, strategy_name: str) -> dict:
-        method = logics.strategies[strategy_name]
+        method = self.strategy_methods[strategy_name]
 
         symbol = self.symbol_transfer(method.config.symbol)
         other = "BA" if "future" == method.config.product else None
@@ -177,20 +172,12 @@ class Sentry:
             other=other,
         )
         qd = DataFile(dc)
-        if isinstance(method.config.lookback_days, int):
-            start_date = str(
-                pd.Timestamp.now().date()
-                - pd.Timedelta(method.config.lookback_days, "day")
-            )
-        else:
-            start_date = None
-        self.update_data(start_date=start_date, **dc.dict())
         ohlcv = qd.load_kbar()
         data = method.get_last_signal(ohlcv)
         return data
 
     def get_last_orders(self, strategy_name: str) -> dict:
-        method = logics.strategies[strategy_name]
+        method = self.strategy_methods[strategy_name]
 
         symbol = self.symbol_transfer(method.config.symbol)
         other = "BA" if "future" == method.config.product else None
@@ -206,14 +193,6 @@ class Sentry:
             other=other,
         )
         qd = DataFile(dc)
-        if isinstance(method.config.lookback_days, int):
-            start_date = str(
-                pd.Timestamp.now().date()
-                - pd.Timedelta(method.config.lookback_days, "day")
-            )
-        else:
-            start_date = None
-        self.update_data(start_date=start_date, **dc.dict())
         ohlcv = qd.load_kbar()
         data = method.get_orders(ohlcv)
         return data
@@ -221,7 +200,7 @@ class Sentry:
     def get_last_performance(
         self, strategy_name: str = None, lookback_days: int = 750
     ) -> tuple:
-        method = logics.strategies[strategy_name]
+        method = self.strategy_methods[strategy_name]
 
         symbol = self.symbol_transfer(method.config.symbol)
         other = "BA" if "future" == method.config.product else None
@@ -244,6 +223,7 @@ class Sentry:
         ohlcv = df.load_kbar().loc[start_date_str:]
         method.create_mafe_trades_report(ohlcv)
         temp_trades = method.trades.assign(sn=method.config.name)
+        temp_trades["benchmark"] = ohlcv.close.loc[temp_trades.exit_time].values
         temp_trades["pct"] = temp_trades.direction.map(
             lambda x: -1 if (x == "1") | (x == 1) else 1
         ) * (
@@ -254,38 +234,84 @@ class Sentry:
         temp_performance = method.performance
         return temp_trades, temp_performance, method.config
 
-    def gen_signals_pickle(self, test_all: bool = False) -> None:
+    def test_method(
+        self, method: object, lookback_days: int = 750, fast_mode: bool = False
+    ) -> tuple:
+        symbol = self.symbol_transfer(method.config.symbol)
+        other = "BA" if "future" == method.config.product else None
+        if ("R1" not in method.config.symbol) & (method.config.product == "future"):
+            symbol += "R1"
+
+        dc = DataConfig(
+            file_path=self.full_data_path,
+            data_source="shioaji",
+            code=symbol,
+            frequency=method.config.freq,
+            product=method.config.product,
+            other=other,
+        )
+        df = DataFile(dc)
+        if not fast_mode:
+            self.update_data(**dc.dict())
+        start_date_str = str(
+            pd.Timestamp.today().date() - pd.Timedelta(lookback_days, "day")
+        )
+        ohlcv = df.load_kbar().loc[start_date_str:]
+        method.ohlcv = ohlcv.copy()
+        method.create_mafe_trades_report(ohlcv)
+        temp_trades = method.trades.assign(sn=method.config.name)
+        temp_trades["benchmark"] = ohlcv.close.loc[temp_trades.exit_time].values
+        temp_trades["pct"] = temp_trades.direction.map(
+            lambda x: -1 if (x == "1") | (x == 1) else 1
+        ) * (
+            (temp_trades.exit_price - temp_trades.entry_price) / temp_trades.entry_price
+        )
+        temp_trades["symbol"] = method.config.symbol
+        temp_trades["test_mode"] = method.config.test_mode
+        temp_performance = method.performance
+        return temp_trades, temp_performance, method.config
+
+    def get_method_ohlcv(
+        self, method: object, lookback_days: int = 750, fast_mode: bool = False
+    ) -> tuple:
+        symbol = self.symbol_transfer(method.config.symbol)
+        other = "BA" if "future" == method.config.product else None
+        if ("R1" not in method.config.symbol) & (method.config.product == "future"):
+            symbol += "R1"
+
+        dc = DataConfig(
+            file_path=self.full_data_path,
+            data_source="shioaji",
+            code=symbol,
+            frequency=method.config.freq,
+            product=method.config.product,
+            other=other,
+        )
+        df = DataFile(dc)
+        return df.load_kbar()
+
+    def gen_signals_pickle(self) -> None:
         temp = {}
-        for k, method in logics.strategies.items():
-            run = False if test_all else method.config.test_mode
-            if not run:
-                data = self.get_last_signal(k)
-                data = {k: v for k, v in data.items() if "note" not in k}
-                temp[k] = data
+        for k, method in self.strategy_methods.items():
+            data = self.get_last_signal(k)
+            data = {k: v for k, v in data.items() if "note" not in k}
+            temp[k] = data
         pd.to_pickle(temp, "history/reports/signals.pkl")
 
-    def gen_orders_pickle(self, test_all: bool = False) -> None:
+    def gen_orders_pickle(self) -> None:
         temp = {}
-        for k, method in logics.strategies.items():
-            run = False if test_all else method.config.test_mode
-            if not run:
-                data = self.get_last_orders(k)
-                data["signal"] = {
-                    k: v for k, v in data["signal"].items() if "note" not in k
-                }
-                temp[k] = data
+        for k, method in self.strategy_methods.items():
+            data = self.get_last_orders(k)
+            data["signal"] = {
+                k: v for k, v in data["signal"].items() if "note" not in k
+            }
+            temp[k] = data
         pd.to_pickle(temp, "history/reports/orders.pkl")
 
-    def gen_portfolio_pickle(
-        self, lookback_days: int = 750, test_mode: bool = False
-    ) -> None:
+    def gen_portfolio_pickle(self, lookback_days: int = 750) -> None:
         temp_trades = pd.DataFrame()
         temp_performance = {}
-        for k, method in logics.strategies.items():
-            if test_mode & ~method.config.test_mode:
-                continue
-            if ~test_mode & method.config.test_mode:
-                continue
+        for k, method in self.strategy_methods.items():
             trades, performance, config = self.get_last_performance(k, lookback_days)
             temp_trades = pd.concat([temp_trades, trades])
             temp_performance[k] = performance
@@ -305,12 +331,6 @@ if __name__ == "__main__":
 
     con = Sentry(1)
 
-    # r = con.get_last_signal('LONG_0900')
-    # r = con.get_last_orders('LONG_0900')
-    # r = con.get_last_performance('LONG_0900')
-    # r = con.gen_portfolio_pickle()
-    # print(r[0])
-
     # initial
     print(con.data_config_list)
     print(con.subscribtion_list)
@@ -325,15 +345,15 @@ if __name__ == "__main__":
     sm = ScheduleManager()
     sm.every("day", "14:30").do(con.subscribe_all)
     sm.every("day", "14:29").do(con.unsubscribe_all)
-    sm.every("day", "14:28").do(con.run_database)
-    sm.every("day", "14:27").do(con.stop_database)
-
-    sm.every("day", "08:20").do(con.gen_portfolio_pickle)
+    sm.every("day", "14:25").do(con.gen_portfolio_pickle)
+    sm.every("day", "14:24").do(con.run_database)
+    sm.every("day", "14:23").do(con.stop_database)
 
     sm.every("day", "08:15").do(con.subscribe_all)
     sm.every("day", "08:14").do(con.unsubscribe_all)
-    sm.every("day", "08:13").do(con.run_database)
-    sm.every("day", "08:12").do(con.stop_database)
+    sm.every("day", "08:10").do(con.gen_portfolio_pickle)
+    sm.every("day", "08:09").do(con.run_database)
+    sm.every("day", "08:08").do(con.stop_database)
 
     sm.every(5, "seconds").do(con.update_data_all)
     sm.every(5, "seconds").do(con.gen_orders_pickle)

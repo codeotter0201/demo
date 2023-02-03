@@ -27,7 +27,6 @@ class DataFile:
         dc = dict(self.dc.copy())
         if get_kbar_1T_path:
             dc["frequency"] = "1T"
-            # dc['file_path'] = 'basic'
         file_path = dc.pop("file_path")
         file_path_string = (
             "_".join([v for k, v in dict(dc).items() if (isinstance(v, str))]) + ".pkl"

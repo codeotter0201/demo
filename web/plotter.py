@@ -35,7 +35,7 @@ class Plotter(ABC):
 
         temp["SQN"] = (
             temp["expect_payoff"]
-            * (min(ret.groupby(ret.index.year).size().mean().round(), 100) ** 0.5)
+            * (min(ret.groupby([ret.index.year]).size().mean().round(), 100) ** 0.5)
         ) / ret.std()
         temp = pd.Series(temp)
         if print_result:
@@ -95,14 +95,11 @@ class Plotter(ABC):
 
     @staticmethod
     def plot_mafe(
-        all_trades: pd.DataFrame = None,
-        benchmarket_ohlcv: pd.DataFrame = None,
-        bins=500,
+        trades: pd.DataFrame = None, benchmarket_ohlcv: pd.DataFrame = None, bins=500
     ):
-        """Require Coloumns
+        """require Columns
         ['mfe', 'mae', 'g_mfe', 'pnl']
         """
-        trades = all_trades.copy()
         # drop_col = ['direction', 'entry_idx', 'entry_price', 'exit_idx', 'exit_price', 'status']
         # print('-'*100)
         # print(trades.describe().drop(drop_col, axis=1).round(4).to_string())
@@ -118,8 +115,8 @@ class Plotter(ABC):
             daily_ret = (
                 trades.set_index("Exit Timestamp")
                 .resample("D")
-                .sum()
-                .pnl.fillna(0)
+                .pnl.sum()
+                .fillna(0)
                 .cumsum()
             )
         except:
@@ -127,11 +124,10 @@ class Plotter(ABC):
             daily_ret = (
                 trades.set_index(trades["exit_time"])
                 .resample("D")
-                .sum()
-                .pnl.fillna(0)
+                .pnl.sum()
+                .fillna(0)
                 .cumsum()
             )
-        # benchmarket_ret = ohlcv.close.diff()[daily_ret.index[0]:].cumsum().loc[daily_ret.index]
         if benchmarket_ohlcv:
             benchmarket_ret = (
                 benchmarket_ohlcv.close.diff()[daily_ret.index[0] :]
@@ -447,31 +443,9 @@ class Plotter(ABC):
             col=1,
         )
 
-        """
-        benchmark_ret = method1.ohlcv.resample('D').close.last().dropna().diff().cumsum().fillna(0)
-        strategy_ret = method1.trades.set_index('Exit Timestamp').pnl.reindex(method1.ohlcv.index).resample('D').sum().fillna(0).cumsum()
-        figs.add_trace(go.Scatter(x=benchmark_ret.index,
-                                y=benchmark_ret,
-                                text=benchmark_ret,
-                                mode='lines',
-                                marker_color='black',
-                                name='benchmark ret',
-                                ), row=3, col=1
-                    )
-        figs.add_trace(go.Scatter(x=benchmark_ret.index,
-                                y=strategy_ret,
-                                text=strategy_ret,
-                                mode='lines',
-                                marker_color='red',
-                                name='strategy ret',
-                                ), row=3, col=1
-                    )
-        """
-
         fig.update_layout(
             title_x=0.5, margin=dict(l=20, r=50, t=50, b=20), showlegend=False
         )
-        # fig.update_traces(hoverinfo='skip', hovertemplate=None)
         return fig
 
     @staticmethod

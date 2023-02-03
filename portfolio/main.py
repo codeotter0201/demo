@@ -1,23 +1,51 @@
 import pandas as pd
 from fastapi import FastAPI, Response, Depends
 import uvicorn
+import os
 from sentry import Sentry
+from importlib import reload
 
 app = FastAPI()
 
-sentry = None
+_sentry = None
 
 
 def get_sentry():
-    global sentry
-    if sentry is None:
-        sentry = Sentry(1)
-    return sentry
+    global _sentry
+    if _sentry is None:
+        _sentry = Sentry(1)
+    return _sentry
 
 
-@app.get("/strategies_name_list")
-def strategies_name_list() -> list:
-    return Sentry.get_strategies_name_list()
+@app.put("/reload")
+def reload_module(
+    test: bool = True, lookback_days: int = 750, _sentry=Depends(get_sentry)
+) -> None:
+    pw = True
+    if pw == pw:
+        _sentry.reload_strategies(test=test)
+        _sentry.update_data_all()
+        # _sentry.subscribe_all()
+        _sentry.gen_portfolio_pickle(lookback_days)
+        _sentry.gen_signals_pickle()
+        _sentry.gen_orders_pickle()
+        return dict(
+            mothods=list(_sentry.strategy_methods.keys()),
+            data_config_list=_sentry.data_config_list,
+            subscribtions=_sentry.subscribtion_list,
+        )
+    else:
+        print("set a code")
+        return "set a code"
+
+
+@app.get("/portfolio")
+def get_portfolio(_sentry=Depends(get_sentry)) -> dict:
+    return dict(
+        methods=list(_sentry.strategy_methods.keys()),
+        data_config_list=_sentry.data_config_list,
+        subscribtions=_sentry.subscribtion_list,
+    )
 
 
 @app.get("/trades")
@@ -42,17 +70,6 @@ def get_orders() -> dict:
 def get_performance() -> dict:
     temp_performance = pd.read_pickle("history/reports/performance.pkl")
     return temp_performance
-
-
-@app.post("/portfolio")
-def gen_portfolio(
-    lookback_days: int = 750,
-    test_all: bool = False,
-    pw: str = None,
-    sentry=Depends(get_sentry),
-) -> dict:
-    if pw == "otter":
-        sentry.gen_portfolio_pickle(lookback_days, test_all)
 
 
 if __name__ == "__main__":

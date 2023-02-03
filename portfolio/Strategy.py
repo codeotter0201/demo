@@ -1,163 +1,19 @@
 from abc import ABC, abstractmethod
 import pandas as pd
 import vectorbt as vbt
-import pandas_ta as ta
 import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from pydantic import BaseModel, StrictStr, validator
-from tqdm import tqdm
 from typing import Optional, Union, List, Any
-from decimal import Decimal
+from order import OrderPlan, Order, OrderMethod
+
+# import pandas_ta as ta
+# from tqdm import tqdm
+# from decimal import Decimal
 
 
-class OrderMethod(BaseModel):
-    order_type: str
-    price_type: str
-    stop_followed_price: str
-
-    @validator("order_type")
-    def order_type_rules(cls, v, values, **kwargs):
-        if v not in ["normal", "touch"]:
-            raise ValueError("order_type should be one of ['normal', 'touch']")
-        return v
-
-    @validator("price_type")
-    def price_type_rules(cls, v, values, **kwargs):
-        if v not in ["market", "limit"]:
-            raise ValueError("price_type should be one of ['market', 'limit']")
-        return v
-
-    @validator("stop_followed_price")
-    def stop_followed_price_rules(cls, v, values, **kwargs):
-        stop_followed_price = ["entry_price", "exit_price", "fall_max", "rise_max"]
-        if v not in stop_followed_price:
-            raise ValueError(
-                f"stop_followed_price should be one of {stop_followed_price}"
-            )
-        return v
-
-
-class OrderPlan(BaseModel):
-    entry_order: OrderMethod
-    sp_exit_order: Optional[OrderMethod]
-    tp_exit_order: Optional[OrderMethod]
-    exit_order: OrderMethod
-
-
-class Order:
-    def __init__(self, signal: dict) -> None:
-        self.tags = self.gen_tags_from_signal(signal)
-        self.signal = signal
-
-    def gen_tags_from_signal(self, signal: dict) -> List[dict]:
-        temp = []
-        for order_plan in signal["order_plans"]:
-            for order_kind, enex in order_plan.items():
-                if enex:
-                    infos = dict(
-                        order_kind=order_kind,
-                        strategy_name=signal["name"],
-                        entry_time=signal["entry_time"],
-                        symbol=signal["symbol"],
-                        product=signal["product"],
-                    )
-                    enex.update(infos)
-                    enex = (
-                        enex["entry_time"],
-                        enex["strategy_name"],
-                        enex["symbol"],
-                        enex["product"],
-                        enex["order_type"],
-                        enex["order_kind"],
-                        enex["stop_followed_price"],
-                        enex["price_type"],
-                    )
-                    if enex not in temp:
-                        temp.append(enex)
-        return temp
-
-    def gen_orders(self) -> dict:
-        data = self.signal
-        orders = {}
-        for tag in self.tags:
-            order_kind = tag[-3]
-            order_type = tag[-4]
-            stop_followed_price = tag[-2]
-            price_type = tag[-1]
-            cash = int(1)
-            tag = "|".join(tag)
-            if "entry_order" == order_kind:
-                delay_adjust = 1 if data["delay_type"] == "up" else -1
-                delay_point = Decimal(data["delay_point"]) * delay_adjust
-                order = dict(
-                    order_kind=order_kind,
-                    symbol=data["symbol"],
-                    product=data["product"],
-                    is_stop_order=True if "touch" in order_type else False,
-                    stop_followed_price=stop_followed_price,
-                    stop_price=Decimal(data[stop_followed_price])
-                    + Decimal(delay_point),
-                    followed_price=Decimal(data[stop_followed_price]),
-                    cash=cash,
-                    direction="Buy" if data["direction"] in ["L", "l"] else "Sell",
-                    price_type=price_type,
-                )
-                order["tag"] = tag
-                orders[order_kind] = order
-            elif "sp_exit_order" == order_kind:
-                sp_adjust = 1 if data["direction"] not in ["L", "l"] else -1
-                sp_point = Decimal(data["stop_loss"]) * sp_adjust
-                order = dict(
-                    order_kind=order_kind,
-                    symbol=data["symbol"],
-                    product=data["product"],
-                    is_stop_order=True if "touch" in order_type else False,
-                    stop_followed_price=stop_followed_price,
-                    stop_price=Decimal(data[stop_followed_price]) + sp_point,
-                    followed_price=Decimal(data[stop_followed_price]),
-                    cash=cash,
-                    direction="Buy" if data["direction"] not in ["L", "l"] else "Sell",
-                    price_type=price_type,
-                )
-                order["tag"] = tag
-                orders[order_kind] = order
-            elif "tp_exit_order" == order_kind:
-                tp_adjust = 1 if data["direction"] in ["L", "l"] else -1
-                tp_point = Decimal(data["take_profit"]) * tp_adjust
-                order = dict(
-                    order_kind=order_kind,
-                    symbol=data["symbol"],
-                    product=data["product"],
-                    is_stop_order=True if "touch" in order_type else False,
-                    stop_followed_price=stop_followed_price,
-                    stop_price=Decimal(data[stop_followed_price]) + tp_point,
-                    followed_price=Decimal(data[stop_followed_price]),
-                    cash=cash,
-                    direction="Buy" if data["direction"] not in ["L", "l"] else "Sell",
-                    price_type=price_type,
-                )
-                order["tag"] = tag
-                orders[order_kind] = order
-            elif "exit_order" == order_kind:
-                order = dict(
-                    order_kind=order_kind,
-                    symbol=data["symbol"],
-                    product=data["product"],
-                    is_stop_order=True if "touch" in order_type else False,
-                    stop_followed_price=stop_followed_price,
-                    stop_price=Decimal(data[stop_followed_price]),
-                    followed_price=Decimal(data[stop_followed_price]),
-                    cash=cash,
-                    direction="Buy" if data["direction"] not in ["L", "l"] else "Sell",
-                    price_type=price_type,
-                )
-                order["tag"] = tag
-                orders[order_kind] = order
-        return orders
-
-
-class Config(BaseModel):
+class StrategyConfig(BaseModel):
     """
     symbols: stock id, future id
     freq: "T", "H", "D", "S"
@@ -180,7 +36,7 @@ class Config(BaseModel):
     stop_loss: float = None
     take_profit: float = None
     sl_trailing: bool = False
-    order_plans: List[OrderPlan] = None
+    order_plans: List[OrderPlan] = []
     test_mode: bool = True
     note: str = None
     entry_note: str = None
@@ -207,9 +63,13 @@ class Config(BaseModel):
 
 
 class IStrategy(ABC):
-    def __init__(self, config: Config = None) -> None:
+    def __init__(
+        self, config: StrategyConfig = None, order_func: object = None
+    ) -> None:
         self.last_backtest_time = pd.Timestamp.now()
         self.config = config
+        self.trades = pd.DataFrame()
+        self.order_func = order_func
 
     def __call__(self, populate_enex: object) -> None:
         self.populate_enex = populate_enex
@@ -317,6 +177,11 @@ class IStrategy(ABC):
                 self.trades.pnl, self.trades.exit_time
             )
             self.last_backtest_time = pd.Timestamp.now()
+            self.config.order_plans = (
+                self.order_func(self.trades)
+                if self.order_func
+                else self.config.order_plans
+            )
 
     def create_mafe_trades_report_level2(
         self,
@@ -566,9 +431,7 @@ class IStrategy(ABC):
         ret["pnl"] = (ret["exit_price"] - ret["entry_price"]) * ret["direction"].map(
             lambda x: 1 if x == 0 else -1
         )
-        time_diff = (
-            portfolio.close.index[-1] - portfolio.close.index[-2]
-        ).total_seconds() / 60
+        # time_diff = (portfolio.close.index[-1] - portfolio.close.index[-2]).total_seconds() / 60
         # print(f'data frequency: {time_diff}/min')
         return ret[sorted(ret.columns)]
 
@@ -713,7 +576,6 @@ class IStrategy(ABC):
         fig.add_trace(
             go.Scatter(
                 x=data.index,
-                # y=(vbt.ATR.run(data.high, data.low, data.close, 20).atr * 2 + data.close).shift(),
                 y=bb.upper,
                 showlegend=False,
                 name="ub",
@@ -728,7 +590,6 @@ class IStrategy(ABC):
         fig.add_trace(
             go.Scatter(
                 x=data.index,
-                # y=(-vbt.ATR.run(data.high, data.low, data.close, 20).atr * 2 + data.close).shift(),
                 y=bb.lower,
                 showlegend=False,
                 name="db",
@@ -743,7 +604,6 @@ class IStrategy(ABC):
         fig.add_trace(
             go.Scatter(
                 x=data.index,
-                # y=(-vbt.ATR.run(data.high, data.low, data.close, 20).atr * 2 + data.close).shift(),
                 y=bb.middle,
                 showlegend=False,
                 name="mb",
@@ -758,24 +618,6 @@ class IStrategy(ABC):
         for i in trades.data:
             if i.name != "Close":
                 fig.add_trace(i, row=1, col=1)
-
-        # fig.add_trace(trades.data[1],
-        #     row=1,
-        #     col=1
-        #     # secondary_y=True
-        # )
-
-        # fig.add_trace(trades.data[2],
-        #     row=1,
-        #     col=1
-        #     # secondary_y=True
-        # )
-
-        # fig.add_trace(trades.data[3],
-        #     row=1,
-        #     col=1
-        #     # secondary_y=True
-        # )
 
         ret = vbt_portfolio.trades.records
         pnl = (data.close * 0).reset_index(drop=True)
@@ -831,7 +673,7 @@ class IStrategy(ABC):
         benchmarket_ohlcv: pd.DataFrame = None,
         bins=500,
     ):
-        """Require Coloumns
+        """required columns
         ['mfe', 'mae', 'g_mfe', 'pnl']
         """
         trades = all_trades.copy()
@@ -869,8 +711,8 @@ class IStrategy(ABC):
             daily_ret = (
                 trades.set_index("Exit Timestamp")
                 .resample("D")
-                .sum()
-                .pnl.fillna(0)
+                .pnl.sum()
+                .fillna(0)
                 .cumsum()
             )
         except:
@@ -878,11 +720,10 @@ class IStrategy(ABC):
             daily_ret = (
                 trades.set_index(trades["exit_time"])
                 .resample("D")
-                .sum()
-                .pnl.fillna(0)
+                .pnl.sum()
+                .fillna(0)
                 .cumsum()
             )
-        # benchmarket_ret = ohlcv.close.diff()[daily_ret.index[0]:].cumsum().loc[daily_ret.index]
         if benchmarket_ohlcv:
             benchmarket_ret = (
                 benchmarket_ohlcv.close.diff()[daily_ret.index[0] :]
@@ -1198,31 +1039,135 @@ class IStrategy(ABC):
             col=1,
         )
 
-        """
-        benchmark_ret = method1.ohlcv.resample('D').close.last().dropna().diff().cumsum().fillna(0)
-        strategy_ret = method1.trades.set_index('Exit Timestamp').pnl.reindex(method1.ohlcv.index).resample('D').sum().fillna(0).cumsum()
-        figs.add_trace(go.Scatter(x=benchmark_ret.index,
-                                y=benchmark_ret,
-                                text=benchmark_ret,
-                                mode='lines',
-                                marker_color='black',
-                                name='benchmark ret',
-                                ), row=3, col=1
-                    )
-        figs.add_trace(go.Scatter(x=benchmark_ret.index,
-                                y=strategy_ret,
-                                text=strategy_ret,
-                                mode='lines',
-                                marker_color='red',
-                                name='strategy ret',
-                                ), row=3, col=1
-                    )
-        """
+        fig.update_layout(
+            title_x=0.5,
+            margin=dict(l=20, r=50, t=50, b=20),
+            showlegend=False,
+            height=2000,
+        )
+        return fig
+
+    @staticmethod
+    def plot_trade(ohlcv: pd.DataFrame = None, temp_oredrs: pd.Series = None, bars=100):
+        et, ex = temp_oredrs["entry_time"], temp_oredrs["exit_time"]
+        # temp_ohlcv = ohlcv.loc[str(order.entry_time.date())].between_time('08:45', '13:45')
+        # time_delta = pd.Timedelta(data_days_range, 'day')
+        # temp_ohlcv = ohlcv.loc[str(temp_oredrs.entry_time - time_delta):str(temp_oredrs.exit_time + time_delta)].copy()
+        et_idx, ex_idx = temp_oredrs["entry_idx"] - bars, temp_oredrs["exit_idx"] + bars
+        temp_ohlcv = ohlcv.iloc[et_idx : ex_idx + 1].copy()
+        min_values = temp_ohlcv.low.min()
+        diff_ranger = (temp_ohlcv.close.max() - temp_ohlcv.close.min()) // 10
+        pnl_type = "Win" if temp_oredrs["pnl"] > 0 else "Lost"
+        fig = temp_ohlcv.vbt.ohlc.plot(
+            title=f'({et} {ex}) | `{pnl_type}` `{round(temp_oredrs["pnl"], 3)}`'
+        )
+
+        slope = temp_ohlcv.open + np.nan
+        slope.loc[temp_oredrs.entry_time] = temp_oredrs.entry_price
+        slope.loc[temp_oredrs.exit_time] = temp_oredrs.exit_price
+        fig.add_trace(
+            go.Scatter(
+                x=slope.index,
+                y=slope,
+                connectgaps=True,
+                line_dash="dash",
+                line_width=1,
+                showlegend=False,
+                line_color="#F54349" if temp_oredrs.pnl > 0 else "black",
+            ),
+        )
+
+        # entry exit
+        temp_ohlcv["entry_price"] = np.nan
+        temp_ohlcv["exit_price"] = np.nan
+
+        temp_ohlcv.loc[et, "entry_price"] = temp_oredrs["entry_price"]
+        temp_ohlcv.loc[ex, "exit_price"] = temp_oredrs["exit_price"]
+        fig.add_trace(
+            go.Scatter(
+                x=temp_ohlcv.index,
+                y=temp_ohlcv["entry_price"],
+                mode="markers",
+                name="Entry",
+                marker_symbol="triangle-up",
+                marker=dict(color="blue", size=15, opacity=0.75),
+                showlegend=False,
+            ),
+        )
+        exit_color = "red" if temp_oredrs["pnl"] > 0 else "black"
+        fig.add_trace(
+            go.Scatter(
+                x=temp_ohlcv.index,
+                y=temp_ohlcv["exit_price"],
+                mode="markers",
+                name="Exit",
+                marker=dict(color=exit_color, size=15, opacity=0.75),
+                marker_symbol="triangle-down",
+                showlegend=False,
+            ),
+        )
+
+        temp_oredrs = temp_oredrs[
+            [i for i in temp_oredrs[4:].index if ("time" in i)]
+        ].sort_values()
+        for k, v in temp_oredrs.items():
+            min_values -= diff_ranger
+            fig.add_vline(
+                x=temp_oredrs[k], line_width=0.2, line_dash="dash", line_color="green"
+            )  # , annotation_text=k, annotation_position="bottom right")
+            fig.add_annotation(
+                x=temp_oredrs[k],
+                y=min_values,
+                text=k,
+                yshift=10,
+            )
+            # fig.add_trace(go.Scatter(x=temp_ohlcv.index,
+            #                             y=temp_ohlcv['up'],
+            #                             # mode='lines',
+            #                             name='band-up',
+            #                             line_width=0.2,
+            #                             showlegend=False
+            #                         )
+            #             )
+
+            # fig.add_trace(go.Scatter(x=temp_ohlcv.index,
+            #                             y=temp_ohlcv['db'],
+            #                             # mode='lines',
+            #                             name='band-db',
+            #                             line_width=0.2,
+            #                             showlegend=False
+            #                         ),
+
+            #             )
+
+            # fig.add_trace(go.Scatter(x=temp_ohlcv.index,
+            #                             y=temp_ohlcv['mb'],
+            #                             # mode='lines',
+            #                             name='band-mb',
+            #                             line_width=0.2,
+            #                             showlegend=False
+            #                         ),
+
+            #             )
+
+            # fig.add_trace(go.Scatter(x=temp_ohlcv.index,
+            #                             y=temp_ohlcv['sma'],
+            #                             # mode='lines',
+            #                             name='sma',
+            #                             line_width=0.2,
+            #                             showlegend=False,
+            #                             line_color='blue'
+            #                         ),
+
+            #             )
+
+        step = max(round(len(temp_ohlcv) * 0.1), 5)
 
         fig.update_layout(
-            title_x=0.5, margin=dict(l=20, r=50, t=50, b=20), showlegend=False
+            xaxis=dict(type="category", tickvals=temp_ohlcv[::step]),
+            xaxis2=dict(type="category", tickvals=temp_ohlcv[::step]),
+            title_x=0.5,
         )
-        #  fig.update_traces(hoverinfo='skip', hovertemplate=None)
         return fig
 
     # def delay_entry(ohlcv, entry_idx, exit_idx, entry_price, delay_type='down', stop_point_series:pd.Series=None):
