@@ -19,10 +19,9 @@ def get_sentry():
 
 @app.put("/reload")
 def reload_module(
-    test: bool = True, lookback_days: int = 750, _sentry=Depends(get_sentry)
+    test:bool=True, lookback_days: int = 750, _sentry=Depends(get_sentry)
 ) -> None:
-    pw = True
-    if pw == pw:
+    if True:
         _sentry.reload_strategies(test=test)
         _sentry.update_data_all()
         # _sentry.subscribe_all()

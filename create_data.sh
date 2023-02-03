@@ -7,4 +7,5 @@ mkdir -p history/full history/tradable
 cp -f shioaji_future_TXFR1_1T.pkl history/full
 cp -f shioaji_future_TXFR1_1T.pkl history/tradable
 docker-compose run --rm database python3 settlement.py
+docker-compose run --rm portfolio python3 firstrun.py
 echo "Done!"

@@ -9,7 +9,8 @@ from history.data import DataConfig, DataFile
 
 class Sentry:
     def __init__(self, mode: int = 3) -> None:
-        self.strategy_methods = logics.get_strategies(test=False)
+        is_test_mode = True if os.getenv('IS_DRYRUN', 'Yes') == 'Yes' else False
+        self.strategy_methods = logics.get_strategies(test=is_test_mode)
         self.tradable_data_path = "tradable"
         self.full_data_path = "full"
         self.linode_ip = os.getenv("LINODE_IP")
@@ -25,9 +26,8 @@ class Sentry:
         self.setup_directory()
         self.get_symbol_params()
 
-    def reload_strategies(self) -> None:
-        is_test_mode = True if os.getenv('IS_DRYRUN', 'Yes') == 'Yes' else False
-        self.strategy_methods = logics.get_strategies(test=is_test_mode)
+    def reload_strategies(self, test:bool=True) -> None:
+        self.strategy_methods = logics.get_strategies(test=test)
         self.get_symbol_params()
 
     def setup_directory(self):
@@ -325,6 +325,12 @@ class Sentry:
             "history/reports/performance.pkl",
         )
 
+    def run(self) -> None:
+        time.sleep(10)
+        self.update_data_all()
+        self.gen_portfolio_pickle()
+        self.gen_signals_pickle()
+        self.gen_orders_pickle()
 
 if __name__ == "__main__":
     from vectorbt import ScheduleManager
@@ -334,12 +340,8 @@ if __name__ == "__main__":
     # initial
     print(con.data_config_list)
     print(con.subscribtion_list)
-    time.sleep(10)
-    con.update_data_all()
-    con.subscribe_all()
-    con.gen_portfolio_pickle()
-    con.gen_signals_pickle()
-    con.gen_orders_pickle()
+    
+    con.run()
 
     # start quene
     sm = ScheduleManager()
