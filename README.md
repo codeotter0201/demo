@@ -25,12 +25,11 @@ IS_DRYRUN = 'Yes'
 source create_data.sh
 docker-compose up -d
 ```
+> Dashboard [https://127.0.0.1](https://127.0.0.1)
+> Backend [https://127.0.0.1:9999/docs](https://127.0.0.1:9999/docs)
 
-### Dashboard
-[https://127.0.0.1](https://127.0.0.1)
-
-### Backend
-[https://127.0.0.1:9999/docs](https://127.0.0.1:9999/docs)
+## Workflow
+![](https://github.com/codeotter0201/demo/blob/master/workflow.jpg)
 
 ## Demo
 ![](https://github.com/codeotter0201/demo/blob/master/demo.gif)
