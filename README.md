@@ -29,6 +29,7 @@ docker-compose up -d
 > Backend [https://127.0.0.1:9999/docs](https://127.0.0.1:9999/docs)
 
 ## Workflow
+![](https://github.com/codeotter0201/demo/blob/master/mermaid.svg)
 ![](https://github.com/codeotter0201/demo/blob/master/workflow.jpg)
 
 ## Demo
